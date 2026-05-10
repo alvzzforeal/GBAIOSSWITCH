@@ -75,6 +75,9 @@ jobs:
             -DENABLE_GB=OFF \
             -DENABLE_GBP=OFF \
             -DENABLE_NDS=OFF \
+            -DBUILD_QT=OFF \
+            -DBUILD_SDL=OFF \
+            -DBUILD_LIBRETRO=OFF \
             -DCMAKE_INSTALL_PREFIX=./install
 
           cmake --build . --config Release --target install \
