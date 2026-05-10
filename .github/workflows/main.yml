@@ -51,6 +51,7 @@ jobs:
           mkdir -p build-ios && cd build-ios
 
           cmake .. \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchain-ios.cmake \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED=OFF \
