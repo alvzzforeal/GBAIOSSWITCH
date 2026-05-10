@@ -100,7 +100,7 @@ jobs:
           # xcodegen 2.43+ generates objectVersion 77 which requires Xcode 16+
           curl -L https://github.com/yonaskolb/XcodeGen/releases/download/2.42.0/xcodegen.zip -o xcodegen.zip
           unzip -o xcodegen.zip -d /tmp/xcodegen
-          sudo mv /tmp/xcodegen/xcodegen /usr/local/bin/xcodegen
+          sudo mv /tmp/xcodegen/xcodegen/bin/xcodegen /usr/local/bin/xcodegen
           xcodegen version
 
       - name: Write project.yml
