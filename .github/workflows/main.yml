@@ -50,9 +50,17 @@ jobs:
           cd mgba
           mkdir -p build-ios && cd build-ios
 
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+
           cmake .. \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-            -DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchain-ios.cmake \
+            -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT="$SDK" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED=OFF \
             -DBUILD_STATIC=ON \
@@ -67,11 +75,11 @@ jobs:
             -DENABLE_GB=OFF \
             -DENABLE_GBP=OFF \
             -DENABLE_NDS=OFF \
-            -DCMAKE_OSX_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path) \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_INSTALL_PREFIX=./install
 
-          cmake --build . --config Release --target install -j$(sysctl -n hw.ncpu)
+          cmake --build . --config Release --target install \
+            -- -sdk iphoneos -arch arm64 \
+               CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY=
 
       # ─── 5. Generate Xcode project via xcodegen ────────────────────────────
       #   If you already have a .xcodeproj committed, delete this step and the
