@@ -1,203 +1,167 @@
-// EmulatorState.swift
-// Observable state for the running emulator session
+// EmulatorCore.swift
+// Swift wrapper around MGBAEmulatorBridge (Objective-C++ bridge to mGBA C core)
+//
+// INTEGRATION NOTE:
+// This file depends on MGBAEmulatorBridge, an Objective-C++ class that you must
+// compile together with the mGBA source. See INTEGRATION.md for full instructions.
+//
+// Until mGBA is integrated, a StubEmulatorBridge is used so the UI compiles.
 
 import Foundation
-import Combine
-import SwiftUI
+import CoreGraphics
+import AVFoundation
 
-// MARK: - GBA Button Enum
+// MARK: - EmulatorCore
 
-enum GBAButton: Int, CaseIterable, Codable {
-    case a = 0
-    case b = 1
-    case select = 2
-    case start = 3
-    case right = 4
-    case left = 5
-    case up = 6
-    case down = 7
-    case r = 8
-    case l = 9
+final class EmulatorCore {
 
-    var displayName: String {
-        switch self {
-        case .a: return "A"
-        case .b: return "B"
-        case .select: return "Select"
-        case .start: return "Start"
-        case .right: return "Right"
-        case .left: return "Left"
-        case .up: return "Up"
-        case .down: return "Down"
-        case .r: return "R"
-        case .l: return "L"
+    // MARK: - Screen constants
+    static let screenWidth = 240
+    static let screenHeight = 160
+    static let audioSampleRate: Int = 32768
+    static let framesPerSecond: Double = 59.7275
+
+    // MARK: - Internal bridge
+    // In production: replace StubEmulatorBridge with MGBAEmulatorBridge
+    #if MGBA_INTEGRATED
+    private let bridge = MGBAEmulatorBridge()
+    #else
+    private let bridge = StubEmulatorBridge()
+    #endif
+
+    private var audioEngine: GBAAudioEngine?
+    private var isRunning = false
+
+    // MARK: - Lifecycle
+
+    /// Load ROM data into the emulator core.
+    /// - Throws: EmulatorError if the ROM is invalid or the core fails to initialize.
+    func loadROM(data: Data) throws {
+        let result = bridge.loadROM(data)
+        guard result else {
+            throw EmulatorError.romLoadFailed("Core rejected the ROM. Ensure it is a valid GBA ROM.")
         }
-    }
-}
-
-// MARK: - Emulator Status
-
-enum EmulatorStatus {
-    case idle
-    case running
-    case paused
-    case error(String)
-}
-
-// MARK: - EmulatorState
-
-@MainActor
-final class EmulatorState: ObservableObject {
-    @Published var status: EmulatorStatus = .idle
-    @Published var currentROM: ROMEntry?
-    @Published var fps: Double = 0
-    @Published var currentFrame: CGImage?
-    @Published var showPauseMenu = false
-
-    // The underlying core - this is the bridge to mGBA
-    let core: EmulatorCore
-
-    private var frameTimer: AnyCancellable?
-    private var fpsCounter = FPSCounter()
-
-    init() {
-        self.core = EmulatorCore()
+        audioEngine = GBAAudioEngine(sampleRate: Self.audioSampleRate)
+        audioEngine?.start()
     }
 
-    // MARK: - Load & Start
-
-    func loadAndStart(rom: ROMEntry, library: ROMLibrary) async {
-        do {
-            let data = try library.romData(for: rom)
-            currentROM = rom
-            try core.loadROM(data: data)
-
-            // Load battery save if exists
-            if let saveData = SaveManager.shared.loadBatterySave(romID: rom.id) {
-                core.importBatterySave(data: saveData)
-            }
-
-            core.start()
-            status = .running
-            startFrameLoop()
-        } catch {
-            status = .error("Failed to load ROM: \(error.localizedDescription)")
-        }
+    func start() {
+        bridge.start()
+        isRunning = true
     }
-
-    // MARK: - Controls
-
-    func press(button: GBAButton) {
-        core.pressButton(button)
-    }
-
-    func release(button: GBAButton) {
-        core.releaseButton(button)
-    }
-
-    // MARK: - Pause / Resume
 
     func pause() {
-        core.pause()
-        status = .paused
-        showPauseMenu = true
-        stopFrameLoop()
+        bridge.pause()
+        isRunning = false
+        audioEngine?.pause()
     }
 
     func resume() {
-        core.resume()
-        status = .running
-        showPauseMenu = false
-        startFrameLoop()
+        bridge.resume()
+        isRunning = true
+        audioEngine?.resume()
     }
 
     func reset() {
-        core.reset()
-        status = .running
-        showPauseMenu = false
-        startFrameLoop()
+        bridge.reset()
+        isRunning = true
     }
 
-    func stop() {
-        autoSave()
-        core.pause()
-        status = .idle
-        currentROM = nil
-        currentFrame = nil
-        stopFrameLoop()
+    // MARK: - Frame step
+
+    /// Advance the emulator by one frame (called at ~60Hz by the frame loop).
+    func stepFrame() {
+        bridge.stepFrame()
+
+        // Pull audio samples from core and push to audio engine
+        let rawSamples = bridge.getAudioSamples()
+        if !rawSamples.isEmpty {
+            let samples = rawSamples.map { $0.int16Value }
+            audioEngine?.enqueue(samples: samples)
+        }
+    }
+
+    // MARK: - Video
+
+    /// Get the current video frame as a CGImage (240x160, RGB555/888).
+    func getVideoFrame() -> CGImage? {
+        guard let pixelData = bridge.getVideoFrameBuffer() else { return nil }
+        return buildCGImage(from: pixelData)
+    }
+
+    private func buildCGImage(from data: Data) -> CGImage? {
+        let width = Self.screenWidth
+        let height = Self.screenHeight
+        // mGBA outputs XBGR8888 or RGB565 depending on build flags.
+        // We request RGBA8888 from the bridge for simplicity.
+        let bytesPerPixel = 4
+        let bytesPerRow = width * bytesPerPixel
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+
+        var mutableData = data
+        return mutableData.withUnsafeMutableBytes { ptr -> CGImage? in
+            guard let baseAddress = ptr.baseAddress else { return nil }
+            let context = CGContext(
+                data: baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo.rawValue
+            )
+            return context?.makeImage()
+        }
+    }
+
+    // MARK: - Audio
+
+    func getAudioSamples() -> [Int16] {
+        return bridge.getAudioSamples().map { $0.int16Value }
+    }
+
+    // MARK: - Input
+
+    func pressButton(_ button: GBAButton) {
+        bridge.pressButton(button.rawValue)
+    }
+
+    func releaseButton(_ button: GBAButton) {
+        bridge.releaseButton(button.rawValue)
     }
 
     // MARK: - Save States
 
-    func saveState(slot: Int) {
-        guard let rom = currentROM else { return }
-        if let stateData = core.saveState() {
-            SaveManager.shared.saveState(data: stateData, romID: rom.id, slot: slot)
-        }
+    func saveState() -> Data? {
+        return bridge.saveState()
     }
 
-    func loadState(slot: Int) {
-        guard let rom = currentROM else { return }
-        if let stateData = SaveManager.shared.loadState(romID: rom.id, slot: slot) {
-            core.loadState(data: stateData)
-        }
+    func loadState(data: Data) {
+        bridge.loadState(data)
     }
 
-    func autoSave() {
-        guard let rom = currentROM else { return }
-        // Battery save (SRAM)
-        if let saveData = core.exportBatterySave() {
-            SaveManager.shared.saveBatterySave(data: saveData, romID: rom.id)
-        }
-        // Auto save state
-        if let stateData = core.saveState() {
-            SaveManager.shared.saveState(data: stateData, romID: rom.id, slot: -1) // slot -1 = auto
-        }
+    // MARK: - Battery Save (SRAM/Flash/EEPROM)
+
+    func exportBatterySave() -> Data? {
+        return bridge.exportBatterySave()
     }
 
-    // MARK: - Frame Loop
-
-    private func startFrameLoop() {
-        stopFrameLoop()
-        // GBA runs at ~59.73 fps. We use a display-link style timer.
-        frameTimer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                self?.tick()
-            }
-    }
-
-    private func stopFrameLoop() {
-        frameTimer?.cancel()
-        frameTimer = nil
-    }
-
-    private func tick() {
-        guard case .running = status else { return }
-        core.stepFrame()
-        if let cgImage = core.getVideoFrame() {
-            currentFrame = cgImage
-        }
-        fps = fpsCounter.tick()
+    func importBatterySave(data: Data) {
+        bridge.importBatterySave(data)
     }
 }
 
-// MARK: - FPS Counter
+// MARK: - Errors
 
-private struct FPSCounter {
-    private var lastTime = Date()
-    private var frameCount = 0
-    private var currentFPS: Double = 0
+enum EmulatorError: LocalizedError {
+    case romLoadFailed(String)
+    case stateUnavailable
 
-    mutating func tick() -> Double {
-        frameCount += 1
-        let now = Date()
-        let elapsed = now.timeIntervalSince(lastTime)
-        if elapsed >= 1.0 {
-            currentFPS = Double(frameCount) / elapsed
-            frameCount = 0
-            lastTime = now
+    var errorDescription: String? {
+        switch self {
+        case .romLoadFailed(let msg): return "ROM Load Failed: \(msg)"
+        case .stateUnavailable: return "No save state available"
         }
-        return currentFPS
     }
 }
