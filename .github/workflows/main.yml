@@ -79,6 +79,12 @@ jobs:
             -DBUILD_SDL=OFF \
             -DBUILD_LIBRETRO=OFF \
             -DUSE_PNG=OFF \
+            -DUSE_EDITLINE=OFF \
+            -DUSE_GDB_STUB=OFF \
+            -DUSE_DISCORD_RPC=OFF \
+            -DUSE_SQLITE3=OFF \
+            -DUSE_LZMA=OFF \
+            -DUSE_ZLIB=ON \
             -DCMAKE_INSTALL_PREFIX=./install
 
           cmake --build . --config Release --target install \
