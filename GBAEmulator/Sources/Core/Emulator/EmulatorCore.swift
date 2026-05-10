@@ -74,8 +74,9 @@ final class EmulatorCore {
         bridge.stepFrame()
 
         // Pull audio samples from core and push to audio engine
-        let samples = bridge.getAudioSamples()
-        if !samples.isEmpty {
+        let rawSamples = bridge.getAudioSamples()
+        if !rawSamples.isEmpty {
+            let samples = rawSamples.map { $0.int16Value }
             audioEngine?.enqueue(samples: samples)
         }
     }
@@ -117,7 +118,7 @@ final class EmulatorCore {
     // MARK: - Audio
 
     func getAudioSamples() -> [Int16] {
-        return bridge.getAudioSamples()
+        return bridge.getAudioSamples().map { $0.int16Value }
     }
 
     // MARK: - Input
