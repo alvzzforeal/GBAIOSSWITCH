@@ -95,7 +95,13 @@ jobs:
       #   If you already have a .xcodeproj committed, delete this step and the
       #   project.yml file, then set XCODEPROJ to your committed project path.
       - name: Install xcodegen
-        run: brew install xcodegen
+        run: |
+          # Install xcodegen 2.42.0 — last version that generates objectVersion 76 (Xcode 15.x compatible)
+          # xcodegen 2.43+ generates objectVersion 77 which requires Xcode 16+
+          curl -L https://github.com/yonaskolb/XcodeGen/releases/download/2.42.0/xcodegen.zip -o xcodegen.zip
+          unzip -o xcodegen.zip -d /tmp/xcodegen
+          sudo mv /tmp/xcodegen/xcodegen /usr/local/bin/xcodegen
+          xcodegen version
 
       - name: Write project.yml
         run: |
