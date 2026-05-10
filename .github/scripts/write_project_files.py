@@ -24,6 +24,7 @@ options:
   deploymentTarget:
     iOS: "17.0"
   xcodeVersion: "15.4"
+  createIntermediateGroups: true
 
 settings:
   base:
@@ -47,7 +48,8 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: GBAEmulator/Sources
-        name: Sources
+        type: group
+        createIntermediateGroups: true
       - path: GBAEmulator/GBAEmulator-Bridging-Header.h
     settings:
       base:
