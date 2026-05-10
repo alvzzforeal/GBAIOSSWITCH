@@ -105,48 +105,57 @@ jobs:
 
       - name: Write project.yml
         run: |
-          MGBA_INCLUDE=$(pwd)/mgba/build-ios/install/include
-          MGBA_LIB=$(pwd)/mgba/build-ios/install/lib
+          MGBA_INCLUDE="$(pwd)/mgba/build-ios/install/include"
+          MGBA_LIB="$(pwd)/mgba/build-ios/install/lib"
 
-          cat > project.yml <<EOF
-          name: GBAEmulator
-          options:
-            bundleIdPrefix: com.yourname
-            deploymentTarget:
-              iOS: "17.0"
-            xcodeVersion: "${{ env.XCODE_VERSION }}"
+          # Write project.yml via python3 to avoid heredoc indentation/expansion issues
+          python3 -c "
+import subprocess
+mgba_include = subprocess.check_output(['bash','-c','echo \$(pwd)/mgba/build-ios/install/include']).decode().strip()
+mgba_lib     = subprocess.check_output(['bash','-c','echo \$(pwd)/mgba/build-ios/install/lib']).decode().strip()
+content = '''name: GBAEmulator
+options:
+  bundleIdPrefix: com.yourname
+  deploymentTarget:
+    iOS: \"17.0\"
+  xcodeVersion: \"15.4\"
 
-          settings:
-            base:
-              PRODUCT_BUNDLE_IDENTIFIER: ${{ env.BUNDLE_ID }}
-              SWIFT_VERSION: "5.9"
-              ENABLE_BITCODE: NO
-              OTHER_CPLUSPLUSFLAGS: "-std=c++17"
-              SWIFT_OBJC_BRIDGING_HEADER: "GBAEmulator/GBAEmulator-Bridging-Header.h"
-              OTHER_SWIFT_FLAGS: "-DMGBA_INTEGRATED"
-              HEADER_SEARCH_PATHS: "${MGBA_INCLUDE}"
-              LIBRARY_SEARCH_PATHS: "${MGBA_LIB}"
-              OTHER_LDFLAGS: "-lmgba -lc++ -lz"
-              CODE_SIGNING_ALLOWED: NO
-              CODE_SIGNING_REQUIRED: NO
+settings:
+  base:
+    PRODUCT_NAME: GBAEmulator
+    PRODUCT_BUNDLE_IDENTIFIER: com.yourname.gbaemulator
+    SWIFT_VERSION: \"5.9\"
+    ENABLE_BITCODE: NO
+    OTHER_CPLUSPLUSFLAGS: \"-std=c++17\"
+    SWIFT_OBJC_BRIDGING_HEADER: \"GBAEmulator/GBAEmulator-Bridging-Header.h\"
+    OTHER_SWIFT_FLAGS: \"-DMGBA_INTEGRATED\"
+    HEADER_SEARCH_PATHS: \"''' + mgba_include + '''\"
+    LIBRARY_SEARCH_PATHS: \"''' + mgba_lib + '''\"
+    OTHER_LDFLAGS: \"-lmgba -lc++ -lz\"
+    CODE_SIGNING_ALLOWED: NO
+    CODE_SIGNING_REQUIRED: NO
 
-          targets:
-            GBAEmulator:
-              type: application
-              platform: iOS
-              deploymentTarget: "17.0"
-              sources:
-                - path: GBAEmulator/Sources
-                  name: Sources
-                - path: GBAEmulator/GBAEmulator-Bridging-Header.h
-              settings:
-                base:
-                  INFOPLIST_FILE: GBAEmulator/Info.plist
-              dependencies:
-                - sdk: AVFoundation.framework
-                - sdk: GameController.framework
-                - sdk: MultipeerConnectivity.framework
-          EOF
+targets:
+  GBAEmulator:
+    type: application
+    platform: iOS
+    deploymentTarget: \"17.0\"
+    sources:
+      - path: GBAEmulator/Sources
+        name: Sources
+      - path: GBAEmulator/GBAEmulator-Bridging-Header.h
+    settings:
+      base:
+        INFOPLIST_FILE: GBAEmulator/Info.plist
+    dependencies:
+      - sdk: AVFoundation.framework
+      - sdk: GameController.framework
+      - sdk: MultipeerConnectivity.framework
+'''
+open('project.yml','w').write(content)
+print('project.yml written OK')
+"
+          cat project.yml
 
       - name: Generate .xcodeproj
         run: xcodegen generate --spec project.yml
@@ -155,48 +164,50 @@ jobs:
       - name: Create Info.plist
         run: |
           mkdir -p GBAEmulator
-          cat > GBAEmulator/Info.plist <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleName</key><string>GBAEmulator</string>
-            <key>CFBundleIdentifier</key><string>com.yourname.gbaemulator</string>
-            <key>CFBundleVersion</key><string>1</string>
-            <key>CFBundleShortVersionString</key><string>1.0</string>
-            <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
-            <key>LSRequiresIPhoneOS</key><true/>
-            <key>UIFileSharingEnabled</key><true/>
-            <key>LSSupportsOpeningDocumentsInPlace</key><true/>
-            <key>CFBundleDocumentTypes</key>
-            <array>
-              <dict>
-                <key>CFBundleTypeName</key><string>GBA ROM</string>
-                <key>CFBundleTypeRole</key><string>Viewer</string>
-                <key>CFBundleTypeExtensions</key><array><string>gba</string></array>
-                <key>LSItemContentTypes</key><array><string>public.data</string></array>
-              </dict>
-            </array>
-            <key>NSLocalNetworkUsageDescription</key>
-            <string>GBA Emulator uses your local network for multiplayer link cable emulation.</string>
-            <key>NSBonjourServices</key>
-            <array>
-              <string>_gba-link._tcp</string>
-              <string>_gba-link._udp</string>
-            </array>
-            <key>UIBackgroundModes</key><array><string>audio</string></array>
-            <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
-            <key>UISupportedInterfaceOrientations</key>
-            <array>
-              <string>UIInterfaceOrientationPortrait</string>
-              <string>UIInterfaceOrientationLandscapeLeft</string>
-              <string>UIInterfaceOrientationLandscapeRight</string>
-            </array>
-          </dict>
-          </plist>
-          PLIST
+          python3 -c "
+plist = '''<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\"
+  \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
+<dict>
+  <key>CFBundleName</key><string>GBAEmulator</string>
+  <key>CFBundleIdentifier</key><string>com.yourname.gbaemulator</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleExecutable</key><string>\$(EXECUTABLE_NAME)</string>
+  <key>LSRequiresIPhoneOS</key><true/>
+  <key>UIFileSharingEnabled</key><true/>
+  <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key><string>GBA ROM</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>CFBundleTypeExtensions</key><array><string>gba</string></array>
+      <key>LSItemContentTypes</key><array><string>public.data</string></array>
+    </dict>
+  </array>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>GBA Emulator uses your local network for multiplayer link cable emulation.</string>
+  <key>NSBonjourServices</key>
+  <array>
+    <string>_gba-link._tcp</string>
+    <string>_gba-link._udp</string>
+  </array>
+  <key>UIBackgroundModes</key><array><string>audio</string></array>
+  <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
+  <key>UISupportedInterfaceOrientations</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+  </array>
+</dict>
+</plist>'''
+open('GBAEmulator/Info.plist','w').write(plist)
+print('Info.plist written OK')
+"
 
       # ─── 7. Build (no signing) ─────────────────────────────────────────────
       - name: Build for iOS (no signing)
