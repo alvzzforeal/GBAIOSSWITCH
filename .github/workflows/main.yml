@@ -50,11 +50,6 @@ jobs:
           cd mgba
           mkdir -p build-ios && cd build-ios
 
-          # Install libpng so mGBA uses the system version instead of its
-          # bundled copy (the bundled libpng has a Xcode-generator bug)
-          brew install libpng || true
-          LIBPNG_PREFIX=$(brew --prefix libpng)
-
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
 
           cmake .. \
@@ -83,7 +78,7 @@ jobs:
             -DBUILD_QT=OFF \
             -DBUILD_SDL=OFF \
             -DBUILD_LIBRETRO=OFF \
-            -DCMAKE_PREFIX_PATH="$LIBPNG_PREFIX" \
+            -DUSE_PNG=OFF \
             -DCMAKE_INSTALL_PREFIX=./install
 
           cmake --build . --config Release --target install \
