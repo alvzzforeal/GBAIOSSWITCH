@@ -137,15 +137,9 @@ jobs:
                 base:
                   INFOPLIST_FILE: GBAEmulator/Info.plist
               dependencies:
-                - framework: AVFoundation.framework
-                  implicit: true
-                - framework: GameController.framework
-                  implicit: true
-                - framework: MultipeerConnectivity.framework
-                  implicit: true
-                - library: libmgba.a
-                  path: "${MGBA_LIB}/libmgba.a"
-                  embed: false
+                - sdk: AVFoundation.framework
+                - sdk: GameController.framework
+                - sdk: MultipeerConnectivity.framework
           EOF
 
       - name: Generate .xcodeproj
